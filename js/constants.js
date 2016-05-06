@@ -1,0 +1,36 @@
+var CANVAS_MOUSE_DOWN = "canvas_mouse_down";
+
+var GOAL_COLLECT = "goal_collect";
+var GOAL_TAG = "goal_tag";
+var GOAL_DEPOSIT = "goal_deposit";
+var GOAL_MAP = "goal_map";
+
+var GEO_CIRCLE = "circle";
+var GEO_SQUARE = "square";
+var GEO_TRIANGLE = "triangle";
+
+var GOAL_COLLECT_COLOUR = "#FF0000";
+var GOAL_TAG_COLOUR = "#00FFFF";
+var GOAL_DEPOSIT_COLOUR = "#00FF00";
+var GOAL_MAP_COLOUR  = "#0000FF";
+
+var ACTION_ROTATE = 'action.rotate';
+var ACTION_SPEED = 'action.speed';
+var ACTION_GRIP = 'action.grip';
+var ACTION_RELEASE = 'action.release';
+var ACTION_TAG = 'action.tag';
+var ACTION_IMAGE = 'action.image';
+var ACTION_SIGNAL = 'action.signal';
+
+var MAXIMUM_SPEED = 1;
+var MIN_SPEED = 0;
+
+var XBOUND = 800;
+var YBOUND = 600;
+
+var SENSOR_RANGE = 25;
+
+var BACKWARDS_WAIT = 5;
+var THRESHOLD_DISTANCE = 25;
+var THRESHOLD_EMERGENCY_STOP = 1;
+var THRESHOLD_ANGLE = Math.PI;

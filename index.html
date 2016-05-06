@@ -1,0 +1,41 @@
+<html>
+<head>
+    <link href="css/app.css" rel="stylesheet" />
+</head>
+<body>
+
+<div class="content">
+    <div class="header">
+        <h1>Adaptive Swarm Simulation</h1>
+    </div>
+    <div class="canvas-container">
+        <canvas id="boidUI"></canvas>
+    </div>
+    <div class="goal-options-container">
+        <div class="input">
+            <label>Number of Drones:</label>
+            <input type="text" id="droneCountTxt" />
+            <a href="javascript:void(0)" id="startLink">Start Simulation</a>
+        </div>
+        <ul>
+            <li><span><a class="button" href="javascript:void(0)" id="goal-collect">Collect <span class="box goal-collect"></span></a></span></li>
+            <li><span><a class="button" href="javascript:void(0)" id="goal-deposit">Deposit <span class="box goal-deposit"></span></a></span></li>
+            <li><span><a class="button" href="javascript:void(0)" id="goal-tag">Tag <span class="box goal-tag"></span></a></span></li>
+            <li><span><a class="button" href="javascript:void(0)" id="goal-map">Map <span class="box goal-map"></span></a></span></li>
+            <li><span><a class="button" href="javascript:void(0)" id="cancel-goals">Clear Goals</a></span></li>
+        </ul>
+    </div>
+</div>
+
+<script src="bower_components/underscore/underscore-min.js"></script>
+<script src="js/constants.js"></script>
+<script src="bower_components/PubSubJS/src/pubsub.js"></script>
+<script src="bower_components/jquery/dist/jquery.min.js"></script>
+<script src="js/graphicsEngine.js"></script>
+<script src="js/goal.js"></script>
+<script src="js/drone.js"></script>
+<script src="js/physics.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>

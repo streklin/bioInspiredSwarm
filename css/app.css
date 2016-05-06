@@ -1,0 +1,71 @@
+.content {
+    width: 1280px;
+    margin: auto;
+}
+
+.canvas-container {
+    width: 850px;
+    display: inline-block;
+}
+
+#boidUI {
+    border:1px solid black;
+}
+
+.goal-options-container {
+    display: inline-block;
+    vertical-align: top;
+}
+
+.goal-options-container ul {
+    list-style: none;
+}
+
+.goal-options-container ul .button {
+    text-decoration: none;
+    display: inline-block;
+    padding: 10px 5px;
+    border: 1px solid black;
+    border-radius: 15px;
+    width: 200px;
+    text-align: center;
+    margin-bottom: 10px;
+    background-color: grey;
+    color: white;
+}
+
+.goal-options-container ul .button.active {
+    background-color: white;
+    color: black;
+}
+
+.goal-options-container ul .button:hover {
+    font-weight: bold;
+}
+
+.box {
+    width: 10px;
+    height: 10px;
+    display: inline-block;
+    border: 1px solid black;
+    float: right;
+    position: relative;
+    right: 27px;
+    top: 3px;
+}
+
+.box.goal-collect {
+    background-color: #FF0000;
+}
+
+.box.goal-deposit {
+    background-color: #00FF00;
+}
+
+.box.goal-tag {
+    background-color: #00FFFF;
+}
+
+.box.goal-map {
+    background-color: #0000FF;
+}
