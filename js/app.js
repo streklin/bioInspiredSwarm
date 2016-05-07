@@ -1,4 +1,6 @@
 
+var __id = 0;
+
 var app = function() {
 
     var self = this;
@@ -8,6 +10,8 @@ var app = function() {
     this.drones = [];
     this.goalType = null;
     this.physics = new physics(XBOUND,YBOUND);
+    this.started = false;
+    this.signalManager = new signalManager();
 
     PubSub.subscribe(CANVAS_MOUSE_DOWN, function(msg, data) {
         self.addGoal(data.x, data.y);
@@ -21,9 +25,11 @@ app.prototype.start = function() {
 
 app.prototype.simulate = function(droneCount) {
     this.drones = [];
-
+    this.started = true;
     //create drones
     createDrones.call(this,droneCount);
+
+    this.signalManager.clearSignals();
 
     var self = this;
 
@@ -41,12 +47,12 @@ app.prototype.simulate = function(droneCount) {
         
         render.call(self);
 
-        if (self.iterations >= 6000) {
+        PubSub.subscribe(END_SIMULATION, function(msg, data) {
+            self.started = false;
             clearInterval(self.intervalToken);
-        }
+        });
 
     }, 25);
-
     
 };
 
@@ -77,8 +83,17 @@ function setupUIEvents() {
     });
 
     $('#startLink').click(function() {
-        var droneCount = parseInt($('#droneCountTxt').val());
-        self.simulate(droneCount);
+
+        if (!self.started) {
+            var droneCount = parseInt($('#droneCountTxt').val());
+            $('#startLink').text('End Simulation');
+            self.simulate(droneCount);
+        } else {
+            $('#startLink').text("Start Simulation");
+            PubSub.publish(END_SIMULATION, {});
+        }
+
+
     });
 }
 
@@ -112,9 +127,12 @@ function setGoalType(goalType) {
 app.prototype.addGoal = function(xPos, yPos) {
     if(this.goalType == null) return;
 
+    __id++;
+
     var self = this;
 
     this.goals.push({
+        id: __id,
         goalType: self.goalType,
         x: xPos,
         y: yPos
@@ -164,13 +182,16 @@ function getGoalGeometry(geometry) {
 function getDroneGeometry(geometry) {
     _.each(this.drones, function(element) {
 
+        var color = "#000";
+        if (element.hasGoal) color = "#0F0";
+
         var droneGeo = {
             x: element.x,
             y: element.y,
             orientation: element.theta,
             geometry: GEO_TRIANGLE,
             radius: 5,
-            fillColour: "#000"
+            fillColour: color
         };
 
         geometry.push(droneGeo);
@@ -183,12 +204,15 @@ function getDroneGeometry(geometry) {
 function createDrones(droneCount) {
 
     for(var i = 0; i < droneCount; i++) {
-        var x = Math.floor(Math.random() * XBOUND-25) + 25;
-        var y = Math.floor(Math.random() * YBOUND-25) + 25;
+        var x = Math.floor(Math.random() * 200-25) + 25;
+        var y = Math.floor(Math.random() * 200-25) + 25;
         var orientation = Math.random() * 2 * Math.PI;
         var speed = 1;
 
-        var newDrone = new drone(x,y,orientation,speed, genomeTemplate);
+        __id++;
+
+        var newDrone = new drone(x,y,orientation,speed, genomeTemplate, this.signalManager);
+        newDrone.id = __id;
 
         this.drones.push(newDrone);
     }
@@ -214,6 +238,30 @@ function checkSensorReadings(current) {
     result.push(createSensorReading(current,XBOUND,current.y, null));
     result.push(createSensorReading(current,current.x,YBOUND, null));
 
+    var goals = goalTracking.call(this, current);
+
+    return result.concat(goals);
+}
+
+function goalTracking(current) {
+    var result = [];
+
+    for(var i = 0; i < this.goals.length; i++) {
+        var sense = createSensorReading(current, this.goals[i].x, this.goals[i].y, null);
+        sense.isGoal = true;
+        sense.goalType = this.goals[i].goalType;
+        sense.id = this.goals[i].id;
+
+        if (sense.distance < THRESHOLD_EMERGENCY_STOP) {
+            this.goals[i].id = null;
+        } else if (sense.distance < SENSOR_RANGE) {
+            result.push(sense);
+        }
+
+    }
+
+    this.goals = _.reject(this.goals, function(element) { return element.id == null; });
+    
     return result;
 }
 
@@ -227,7 +275,7 @@ function createSensorReading(current,tx,ty, distance) {
     var y = ty - current.y;
     var angle = Math.atan2(y,x);
 
-    var sense = {distance: distance, angle: angle};
+    var sense = {distance: distance, angle: angle, isGoal: false};
 
     return sense;
 }
