@@ -8,6 +8,7 @@ var app = function() {
     this.graphicsEngine = new graphicsEngine('boidUI', YBOUND, XBOUND);
     this.goals = [];
     this.drones = [];
+    this.obstacles = [];
     this.goalType = null;
     this.physics = new physics(XBOUND,YBOUND);
     this.started = false;
@@ -21,6 +22,7 @@ var app = function() {
 
 app.prototype.start = function() {
     setupUIEvents.call(this);
+    buildMap.call(this);
 };
 
 app.prototype.simulate = function(droneCount) {
@@ -47,13 +49,23 @@ app.prototype.simulate = function(droneCount) {
         
         render.call(self);
 
-        PubSub.subscribe(END_SIMULATION, function(msg, data) {
-            self.started = false;
-            clearInterval(self.intervalToken);
-        });
+        var goalsLeft = _.find(self.goals, function(element) { return element.goalType != GOAL_OBSTACLE});
+
+        if(_.isUndefined(goalsLeft)) {
+            PubSub.publish(END_SIMULATION, {});
+        }
+
 
     }, 25);
-    
+
+
+    this.handle = PubSub.subscribe(END_SIMULATION, function(msg, data) {
+        $('#results').append("<div>Iterations: " + self.iterations + "</div>");
+        self.started = false;
+        clearInterval(self.intervalToken);
+        PubSub.unsubscribe(self.handle);
+    });
+
 };
 
 function setupUIEvents() {
@@ -73,6 +85,10 @@ function setupUIEvents() {
 
     $('#goal-tag').click(function() {
         setGoalType.call(self, GOAL_TAG);
+    });
+
+    $('#add-obstacle').click(function() {
+        addObstacle.call(self);
     });
 
     $('#cancel-goals').click(function() {
@@ -152,23 +168,56 @@ function render() {
     this.graphicsEngine.render(geometry);
 }
 
+function buildMap() {
+    this.goalType = GOAL_OBSTACLE;
+    for(var i = 0; i < 500; i+=10) {
+        this.addGoal(i, 400);
+    }
+    for(i=0;i < 300; i+= 10) {
+        this.addGoal(350, i);
+    }
+
+    this.goalType = GOAL_COLLECT;
+    this.addGoal(670, 102);
+    this.addGoal(681, 176);
+    this.addGoal(689, 501);
+    this.addGoal(102, 548);
+    this.addGoal(179, 541);
+    this.addGoal(721, 147);
+    this.addGoal(719, 481);
+    this.addGoal(737, 537);
+    this.addGoal(75, 560);
+}
+
 function getGoalGeometry(geometry) {
+
+    var releaseGeo = {
+        x: 50,
+        y: 50,
+        geometry: GEO_SQUARE,
+        radius: 150,
+        fillColour: '#d1d1d1'
+    };
+
+    geometry.push(releaseGeo);
 
     _.each(this.goals, function(element) {
         var goalColour = "#000";
+        var radius = 5;
 
         switch(element.goalType) {
             case GOAL_COLLECT: goalColour = GOAL_COLLECT_COLOUR; break;
             case GOAL_DEPOSIT: goalColour = GOAL_DEPOSIT_COLOUR; break;
             case GOAL_MAP: goalColour = GOAL_MAP_COLOUR; break;
             case GOAL_TAG: goalColour = GOAL_TAG_COLOUR; break;
+            case GOAL_OBSTACLE: radius = OBSTACLE_RADIUS; break;
         }
 
         var goalGeo = {
             x: element.x,
             y: element.y,
             geometry: GEO_SQUARE,
-            radius: 5,
+            radius: radius,
             fillColour: goalColour
         };
 
@@ -204,12 +253,25 @@ function getDroneGeometry(geometry) {
 function createDrones(droneCount) {
 
     for(var i = 0; i < droneCount; i++) {
-        var x = Math.floor(Math.random() * 200-25) + 25;
-        var y = Math.floor(Math.random() * 200-25) + 25;
+        var x = Math.floor(Math.random() * 200-25) + 50;
+        var y = Math.floor(Math.random() * 200-25) + 50;
         var orientation = Math.random() * 2 * Math.PI;
         var speed = 1;
 
         __id++;
+
+        var genomeTemplate = {
+            speedDelta: Math.random(),
+            orientationDelta: Math.random(),
+            wanderSpeedProb: Math.random(),
+            wanderOrientationProb: Math.random(),
+            radioThreshold: RADIO_THRESHOLD * Math.random(),
+            thresholdDistance: THRESHOLD_DISTANCE * Math.random(),
+            emergencyStop: THRESHOLD_EMERGENCY_STOP * Math.random(),
+            thresholdAngle:  Math.PI * Math.random(),
+            maximumSpeed: MAXIMUM_SPEED * Math.random(),
+            backwardsWait: BACKWARDS_WAIT * Math.random()
+        };
 
         var newDrone = new drone(x,y,orientation,speed, genomeTemplate, this.signalManager);
         newDrone.id = __id;
@@ -252,7 +314,11 @@ function goalTracking(current) {
         sense.goalType = this.goals[i].goalType;
         sense.id = this.goals[i].id;
 
-        if (sense.distance < THRESHOLD_EMERGENCY_STOP) {
+        if (this.goals[i].goalType == GOAL_OBSTACLE && sense.distance < SENSOR_RANGE + OBSTACLE_RADIUS) {
+            sense.isGoal = false;
+            sense.distance -= OBSTACLE_RADIUS;
+            result.push(sense);
+        } else if (sense.distance < THRESHOLD_EMERGENCY_STOP) {
             this.goals[i].id = null;
         } else if (sense.distance < SENSOR_RANGE) {
             result.push(sense);
@@ -261,7 +327,7 @@ function goalTracking(current) {
     }
 
     this.goals = _.reject(this.goals, function(element) { return element.id == null; });
-    
+
     return result;
 }
 
@@ -278,6 +344,14 @@ function createSensorReading(current,tx,ty, distance) {
     var sense = {distance: distance, angle: angle, isGoal: false};
 
     return sense;
+}
+
+function addObstacle() {
+    $('.goal-options-container .button').removeClass('active');
+    $('#add-obstacle').addClass('active');
+
+    this.goalType = GOAL_OBSTACLE;
+    
 }
 
 function distanceMetric(d1, d2) {

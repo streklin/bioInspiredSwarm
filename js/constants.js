@@ -5,6 +5,7 @@ var GOAL_COLLECT = "goal_collect";
 var GOAL_TAG = "goal_tag";
 var GOAL_DEPOSIT = "goal_deposit";
 var GOAL_MAP = "goal_map";
+var GOAL_OBSTACLE = "goal_obstacle";
 
 var GEO_CIRCLE = "circle";
 var GEO_SQUARE = "square";
@@ -33,7 +34,8 @@ var YBOUND = 600;
 var SENSOR_RANGE = 100;
 
 var BACKWARDS_WAIT = 5;
-var THRESHOLD_DISTANCE = 25;
-var THRESHOLD_EMERGENCY_STOP = 10;
+var THRESHOLD_DISTANCE = 10;
+var THRESHOLD_EMERGENCY_STOP = 5;
 var THRESHOLD_ANGLE = Math.PI;
-var RADIO_THRESHOLD = 200;
+var RADIO_THRESHOLD = 800;
+var OBSTACLE_RADIUS = 15;
