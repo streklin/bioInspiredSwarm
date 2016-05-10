@@ -253,24 +253,26 @@ function getDroneGeometry(geometry) {
 function createDrones(droneCount) {
 
     for(var i = 0; i < droneCount; i++) {
-        var x = Math.floor(Math.random() * 200-25) + 50;
-        var y = Math.floor(Math.random() * 200-25) + 50;
+        var x = Math.floor(Math.random() * 200) + 50;
+        var y = Math.floor(Math.random() * 200) + 50;
         var orientation = Math.random() * 2 * Math.PI;
         var speed = 1;
 
         __id++;
 
         var genomeTemplate = {
-            speedDelta: Math.random(),
-            orientationDelta: Math.random(),
+            speedDelta: Math.random() + 0.1,
+            orientationDelta: Math.random() * 0.2 + 0.1,
             wanderSpeedProb: Math.random(),
             wanderOrientationProb: Math.random(),
-            radioThreshold: RADIO_THRESHOLD * Math.random(),
+            radioThreshold: RADIO_THRESHOLD,
             thresholdDistance: THRESHOLD_DISTANCE * Math.random(),
             emergencyStop: THRESHOLD_EMERGENCY_STOP * Math.random(),
-            thresholdAngle:  Math.PI * Math.random(),
-            maximumSpeed: MAXIMUM_SPEED * Math.random(),
-            backwardsWait: BACKWARDS_WAIT * Math.random()
+            thresholdAngle:  Math.PI,
+            maximumSpeed: MAXIMUM_SPEED * Math.random() + 1,
+            backwardsWait: 0,
+            beaconProb: 0,
+            beaconResponseProb: 0
         };
 
         var newDrone = new drone(x,y,orientation,speed, genomeTemplate, this.signalManager);

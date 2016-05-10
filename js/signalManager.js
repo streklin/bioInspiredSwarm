@@ -8,7 +8,7 @@ signalManager.prototype.clearSignals = function() {
 
 
 signalManager.prototype.clearDroneSignals = function(id) {
-    this.signalsToDeliver = _.reject(this.signalsToDeliver, function(element) { element.id == id; });
+    this.signalsToDeliver = _.reject(this.signalsToDeliver, function(element) { return element.id == id; });
 };
 
 signalManager.prototype.addSignal = function(id, x,y,data) {

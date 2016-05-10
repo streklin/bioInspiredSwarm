@@ -25,7 +25,7 @@ var ACTION_TAG = 'action.tag';
 var ACTION_IMAGE = 'action.image';
 var ACTION_SIGNAL = 'action.signal';
 
-var MAXIMUM_SPEED = 2;
+var MAXIMUM_SPEED = 1;
 var MIN_SPEED = 0;
 
 var XBOUND = 800;
@@ -33,9 +33,12 @@ var YBOUND = 600;
 
 var SENSOR_RANGE = 100;
 
-var BACKWARDS_WAIT = 5;
-var THRESHOLD_DISTANCE = 10;
+var BACKWARDS_WAIT = 50;
+var THRESHOLD_DISTANCE = 50;
 var THRESHOLD_EMERGENCY_STOP = 5;
 var THRESHOLD_ANGLE = Math.PI;
 var RADIO_THRESHOLD = 800;
 var OBSTACLE_RADIUS = 15;
+
+var SIGNAL_GOAL = 'signal.goal';
+var SIGNAL_BECACON = 'signal.beacon';

@@ -40,13 +40,15 @@ var drone = function(x,y, theta, speed, genome, radio) {
 drone.prototype.update = function(sensoryInput) {
 
     var actions = wander.call(this, sensoryInput, []);
-    actions = backup.call(this, sensoryInput, actions);
+    actions = approachBeacon.call(this, sensoryInput, actions);
     actions = detectGoal.call(this, sensoryInput, actions);
+    actions = beaconSend.call(this, sensoryInput, actions);
     actions = signalSend.call(this, sensoryInput, actions);
     actions = processSignalsNoGoal.call(this, sensoryInput, actions);
     actions = processSignalsWithGoal.call(this, sensoryInput, actions);
-    actions = approachGoal.call(this, sensoryInput, actions);
     actions = avoid.call(this, sensoryInput, actions);
+    actions = approachGoal.call(this, sensoryInput, actions);
+    actions = backup.call(this, sensoryInput, actions);
 
     executeActions.call(this, actions);
 };
@@ -93,6 +95,14 @@ function avoid(sensoryInput, actions) {
     for(var i = 0; i < sensoryInput.length; i++) {
         if (sensoryInput[i].isGoal && sensoryInput[i].goalType != GOAL_OBSTACLE) continue; //ignore goals
 
+        var theta1 = this.theta;
+        var theta2 = sensoryInput[i].angle;
+
+
+        var angleDiff = Math.atan2(Math.sin(theta1-theta2), Math.cos(theta1-theta2));
+
+        if (angleDiff > this.genome.thresholdAngle) continue;
+
         if (_.isNull(closestInput)) {
             closestInput = sensoryInput[i];
             continue;
@@ -113,7 +123,7 @@ function avoid(sensoryInput, actions) {
     if (Math.abs(angleDiff) > this.genome.thresholdAngle) return actions;
 
     if (distance < this.genome.thresholdDistance && distance > this.genome.emergencyStop) {
-        var da = 0.2;
+        var da = this.genome.orientationDelta * 2;
 
         if (this.speed < 0) da *= -1;
 
@@ -126,11 +136,34 @@ function avoid(sensoryInput, actions) {
 
         actions = subsume(newAction, actions);
 
-    } else if (distance < this.genome.emergencyStop) {
+    }/* else if(distance > this.genome.thresholdDistance && closestInput.goalType !== GOAL_OBSTACLE) {
+
+        var da = this.genome.orientationDelta * 2;
+
+        if (this.speed < 0) da *= -1;
+
+        if (angleDiff < 0) da *=-1;
+
+        var newAction = {
+            actionType: ACTION_ROTATE,
+            data: -da
+        };
+
+        actions = subsume(newAction, actions);
+
+
+    }*/ else if (distance < this.genome.emergencyStop) {
 
         newAction = {
             actionType: ACTION_SPEED,
             data: -this.speed
+        };
+
+        actions = subsume(newAction, actions);
+
+        var newAction = {
+            actionType: ACTION_ROTATE,
+            data: 0
         };
 
         actions = subsume(newAction, actions);
@@ -170,6 +203,7 @@ function approachGoal(sensoryInput, actions) {
     //check that the goal still exists
     var result = _.find(sensoryInput, function(element) {
         if (!element.isGoal) return false;
+        if (element.goalType == GOAL_OBSTACLE) return false; //don't approach obstacles :P
 
         return element.id == self.goal.id;
     });
@@ -199,23 +233,49 @@ function approachGoal(sensoryInput, actions) {
 
     actions = subsume(rotateAction, actions);
 
-    if(result.distance < this.genome.emergencyStop) {
-        var newAction = {
-            actionType: ACTION_SPEED,
-            data: -1 * this.speed
-        };
+    return actions;
+}
 
-        actions = subsume(newAction, actions);
-    } else {
-        if (this.speed < 0) {
-            var motorAction = {
-                actionType: ACTION_SPEED,
-                data: this.genome.maximumSpeed * (result.distance / this.genome.radioThreshold)
-            };
+function approachBeacon(sensoryInput, actions) {
+    var beaconCheck = Math.random() < this.genome.beaconResponseProb;
 
-            actions = subsume(motorAction, actions);
-        }
-    }
+    if (!beaconCheck) return actions;
+
+    if (this.hasGoal) return actions;
+
+    var signals = this.radio.getSignals(this.x, this.y, this.genome.radioThreshold);
+
+    if (signals.length == 0) return actions;
+
+    //filter to get only the BEACON signals
+    var beaconSignals = _.filter(signals, function(element) { return element.data.signalType === SIGNAL_BECACON; });
+
+    if (beaconSignals.length === 0) return actions;
+
+    var newDirection = 0;
+
+    _.each(beaconSignals, function(element) {
+        newDirection += element.data.direction;
+    });
+
+    var theta1 = this.theta;
+
+    newDirection /= beaconSignals.length;
+
+    var angleDiff = Math.atan2(Math.sin(theta1-newDirection), Math.cos(theta1-newDirection));
+
+    var da = this.genome.orientationDelta;
+
+    if (this.speed < 0) da *= -1;
+
+    if (angleDiff < 0) da *=-1;
+
+    var rotateAction = {
+        actionType: ACTION_ROTATE,
+        data: da
+    };
+
+    actions = subsume(rotateAction, actions);
 
     return actions;
 }
@@ -248,6 +308,25 @@ function detectGoal(sensoryInput, actions) {
 
 }
 
+function beaconSend(sensoryInput, actions) {
+    var beaconCheck = Math.random() < this.genome.beaconProb;
+
+    if (!beaconCheck) return actions;
+
+    var signalAction = {
+        actionType: ACTION_SIGNAL,
+        data: {
+            id: this.id,
+            direction: this.theta,
+            signalType: SIGNAL_BECACON
+        }
+    };
+
+    actions = subsume(signalAction, actions);
+
+    return actions;
+}
+
 function signalSend(sensoryInput, actions) {
 
     //do drone have goal?
@@ -267,7 +346,8 @@ function signalSend(sensoryInput, actions) {
         actionType: ACTION_SIGNAL,
         data: {
             id: result.id,
-            distance: result.distance
+            distance: result.distance,
+            signalType: SIGNAL_GOAL
         }
     };
 
@@ -290,6 +370,7 @@ function processSignalsNoGoal(sensoryInput, actions) {
         var current = signals[i];
 
         if (current.id == this.id) continue; //filter out self signals
+        if (current.data.signalType !== SIGNAL_GOAL) continue;
 
         //find the corresponding goal
         var result = _.find(sensoryInput, function(element) {
@@ -337,6 +418,7 @@ function processSignalsWithGoal(sensoryInput, actions) {
     //make sure we are still the best individual for the job.
     for(var i = 0; i < signals.length; i++) {
         if (signals[i].id == this.id) continue;
+        if (signals[i].data.signalType !== SIGNAL_GOAL) continue;
 
         var current = signals[i];
 
@@ -355,7 +437,7 @@ function processSignalsWithGoal(sensoryInput, actions) {
 
 function subsume(newAction, actionList) {
     //get rid of any other actions of this type
-    actionList = _.reject(actionList, function(element) { element.actionType == newAction.actionType; });
+    actionList = _.reject(actionList, function(element) { return element.actionType == newAction.actionType; });
     actionList.push(newAction);
 
     return actionList;

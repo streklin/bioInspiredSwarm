@@ -8,6 +8,7 @@ physics.prototype.update = function(drones) {
         var current = drones[i];
 
         //if (current.isTarget) continue;
+        if (current.speed < 0.01) continue; //don't bother with stupidly small speeds
 
         current.x += current.speed * Math.cos(current.theta);
         current.y += current.speed * Math.sin(current.theta);
