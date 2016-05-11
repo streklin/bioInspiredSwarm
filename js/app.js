@@ -51,7 +51,7 @@ app.prototype.simulate = function(droneCount) {
 
         var goalsLeft = _.find(self.goals, function(element) { return element.goalType != GOAL_OBSTACLE});
 
-        if(_.isUndefined(goalsLeft)) {
+        if(_.isUndefined(goalsLeft) || self.iterations === 20000) {
             PubSub.publish(END_SIMULATION, {});
         }
 
@@ -177,6 +177,22 @@ function buildMap() {
         this.addGoal(350, i);
     }
 
+    for(var i=0;i<XBOUND;i+=10) {
+        this.addGoal(i,0);
+    }
+
+    for(var i=0;i<XBOUND;i+=10) {
+        this.addGoal(i,YBOUND-20);
+    }
+
+    for(var i=0;i<YBOUND;i+=10) {
+        this.addGoal(0,i);
+    }
+
+    for(var i=0;i<YBOUND;i+=10) {
+        this.addGoal(XBOUND-20,i);
+    }
+
     this.goalType = GOAL_COLLECT;
     this.addGoal(670, 102);
     this.addGoal(681, 176);
@@ -232,7 +248,9 @@ function getDroneGeometry(geometry) {
     _.each(this.drones, function(element) {
 
         var color = "#000";
+        if (element.genome.beaconProb === 1) color = '#F00';
         if (element.hasGoal) color = "#0F0";
+
 
         var droneGeo = {
             x: element.x,
@@ -252,27 +270,32 @@ function getDroneGeometry(geometry) {
 
 function createDrones(droneCount) {
 
+    var leaderCreated = false;
+
     for(var i = 0; i < droneCount; i++) {
         var x = Math.floor(Math.random() * 200) + 50;
         var y = Math.floor(Math.random() * 200) + 50;
-        var orientation = Math.random() * 2 * Math.PI;
+        var orientation = 0;
         var speed = 1;
 
         __id++;
 
+        var followProb = Math.random();
+        var beaconProb = Math.random();
+
         var genomeTemplate = {
-            speedDelta: Math.random() + 0.1,
-            orientationDelta: Math.random() * 0.2 + 0.1,
-            wanderSpeedProb: Math.random(),
-            wanderOrientationProb: Math.random(),
+            speedDelta: 0.5,
+            orientationDelta: 0.3,
+            wanderSpeedProb: 0,
+            wanderOrientationProb: 0.5,
             radioThreshold: RADIO_THRESHOLD,
-            thresholdDistance: THRESHOLD_DISTANCE * Math.random(),
+            thresholdDistance: THRESHOLD_DISTANCE * Math.random() + 20,
             emergencyStop: THRESHOLD_EMERGENCY_STOP * Math.random(),
-            thresholdAngle:  Math.PI,
-            maximumSpeed: MAXIMUM_SPEED * Math.random() + 1,
+            thresholdAngle:  Math.PI / 4,
+            maximumSpeed: 1,
             backwardsWait: 0,
-            beaconProb: 0,
-            beaconResponseProb: 0
+            beaconProb: beaconProb,
+            beaconResponseProb: followProb
         };
 
         var newDrone = new drone(x,y,orientation,speed, genomeTemplate, this.signalManager);

@@ -38,8 +38,9 @@ var drone = function(x,y, theta, speed, genome, radio) {
 };
 
 drone.prototype.update = function(sensoryInput) {
+    var actions = [];
 
-    var actions = wander.call(this, sensoryInput, []);
+    actions = wander.call(this, sensoryInput, actions);
     actions = approachBeacon.call(this, sensoryInput, actions);
     actions = detectGoal.call(this, sensoryInput, actions);
     actions = beaconSend.call(this, sensoryInput, actions);
@@ -62,10 +63,11 @@ function wander(sensoryInput, actions) {
     if (Math.random() <= this.genome.wanderOrientationProb) {
         var angleDelta = Math.random() * this.genome.orientationDelta * 2;
         angleDelta -= this.genome.orientationDelta;
-        actions.push({
+        var action = {
             actionType: ACTION_ROTATE,
             data: angleDelta
-        });
+        };
+        actions = subsume(action, actions);
     }
 
     //change speed?
@@ -76,10 +78,12 @@ function wander(sensoryInput, actions) {
 
         if (this.speed < 0 && speedDelta < 0) speedDelta *= -1;
 
-        actions.push({
+        var action ={
             actionType: ACTION_SPEED,
             data: speedDelta
-        });
+        };
+
+        actions = subsume(action, actions);
     }
 
     return actions;
@@ -127,7 +131,7 @@ function avoid(sensoryInput, actions) {
 
         if (this.speed < 0) da *= -1;
 
-        if (angleDiff < 0) da *=-1;
+        /*if (angleDiff < 0) da *=-1;*/
 
         var newAction = {
             actionType: ACTION_ROTATE,
@@ -136,37 +140,6 @@ function avoid(sensoryInput, actions) {
 
         actions = subsume(newAction, actions);
 
-    }/* else if(distance > this.genome.thresholdDistance && closestInput.goalType !== GOAL_OBSTACLE) {
-
-        var da = this.genome.orientationDelta * 2;
-
-        if (this.speed < 0) da *= -1;
-
-        if (angleDiff < 0) da *=-1;
-
-        var newAction = {
-            actionType: ACTION_ROTATE,
-            data: -da
-        };
-
-        actions = subsume(newAction, actions);
-
-
-    }*/ else if (distance < this.genome.emergencyStop) {
-
-        newAction = {
-            actionType: ACTION_SPEED,
-            data: -this.speed
-        };
-
-        actions = subsume(newAction, actions);
-
-        var newAction = {
-            actionType: ACTION_ROTATE,
-            data: 0
-        };
-
-        actions = subsume(newAction, actions);
     }
 
     return actions;
@@ -175,17 +148,37 @@ function avoid(sensoryInput, actions) {
 function backup(sensoryInput, actions) {
     if (this.hasGoal) return actions;
 
-    if(this.speed != 0) {
-        this.backupCounter = 0;
-        return actions;
+    if (sensoryInput.length == 0) return actions;
+
+    //find minimum distance
+    var closestInput = null;
+
+    for(var i = 0; i < sensoryInput.length; i++) {
+        if (sensoryInput[i].isGoal && sensoryInput[i].goalType != GOAL_OBSTACLE) continue; //ignore goals
+
+        var theta1 = this.theta;
+        var theta2 = sensoryInput[i].angle;
+
+
+        var angleDiff = Math.atan2(Math.sin(theta1-theta2), Math.cos(theta1-theta2));
+
+        if (angleDiff > this.genome.thresholdAngle) continue;
+
+        if (_.isNull(closestInput)) {
+            closestInput = sensoryInput[i];
+            continue;
+        }
+
+        if (sensoryInput[i].distance < closestInput.distance) closestInput = sensoryInput[i];
     }
 
-    this.backupCounter++;
+    //is this an obstacle?
+    var distance = closestInput.distance;
 
-    if(this.backupCounter > this.genome.backwardsWait) {
+    if (distance < this.genome.emergencyStop) {
         var newAction = {
             actionType: ACTION_SPEED,
-            data: -2 * (this.genome.maximumSpeed)
+            data: -2 *this.genome.maximumSpeed
         };
 
         actions = subsume(newAction, actions);
@@ -260,6 +253,7 @@ function approachBeacon(sensoryInput, actions) {
 
     var theta1 = this.theta;
 
+    newDirection += 2*theta1;
     newDirection /= beaconSignals.length;
 
     var angleDiff = Math.atan2(Math.sin(theta1-newDirection), Math.cos(theta1-newDirection));
