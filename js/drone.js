@@ -10,10 +10,10 @@ var genomeTemplate = {
     wanderSpeedProb: 0.05,
     wanderOrientationProb: 0.05,
     radioThreshold: 800,
-    thresholdDistance: 10,
+    thresholdDistance: 25,
     emergencyStop: 5,
     thresholdAngle:  Math.PI,
-    maximumSpeed: 2,
+    maximumSpeed: 5,
     backwardsWait: 5
 };
 
@@ -32,6 +32,8 @@ var drone = function(x,y, theta, speed, genome, radio) {
     this.genome = genome;
     this.radio = radio;
     this.backupCounter = 0;
+    this.beaconMax = Math.round(genome.beaconProb * 50);
+    this.beaconCounter = this.beaconMax;
 
     this.hasGoal = false;
     this.goal = null;
@@ -40,16 +42,15 @@ var drone = function(x,y, theta, speed, genome, radio) {
 drone.prototype.update = function(sensoryInput) {
     var actions = [];
 
-    actions = wander.call(this, sensoryInput, actions);
+    //actions = wander.call(this, sensoryInput, actions);
     actions = approachBeacon.call(this, sensoryInput, actions);
     actions = detectGoal.call(this, sensoryInput, actions);
     actions = beaconSend.call(this, sensoryInput, actions);
-    actions = signalSend.call(this, sensoryInput, actions);
-    actions = processSignalsNoGoal.call(this, sensoryInput, actions);
-    actions = processSignalsWithGoal.call(this, sensoryInput, actions);
+    //actions = signalSend.call(this, sensoryInput, actions);
+    //actions = processSignalsNoGoal.call(this, sensoryInput, actions);
     actions = avoid.call(this, sensoryInput, actions);
     actions = approachGoal.call(this, sensoryInput, actions);
-    actions = backup.call(this, sensoryInput, actions);
+    //actions = backup.call(this, sensoryInput, actions);
 
     executeActions.call(this, actions);
 };
@@ -60,7 +61,7 @@ function wander(sensoryInput, actions) {
     var actions = [];
 
     //change direction?
-    if (Math.random() <= this.genome.wanderOrientationProb) {
+    if (true) {
         var angleDelta = Math.random() * this.genome.orientationDelta * 2;
         angleDelta -= this.genome.orientationDelta;
         var action = {
@@ -71,20 +72,15 @@ function wander(sensoryInput, actions) {
     }
 
     //change speed?
-    if (Math.random() <= this.genome.wanderSpeedProb) {
-
-        var speedDelta = Math.random() * this.genome.speedDelta * 2;
-        speedDelta -= this.genome.speedDelta;
-
-        if (this.speed < 0 && speedDelta < 0) speedDelta *= -1;
-
+    if(this.backupCounter == 0) {
         var action ={
             actionType: ACTION_SPEED,
-            data: speedDelta
+            data: this.genome.maximumSpeed
         };
 
         actions = subsume(action, actions);
     }
+
 
     return actions;
 }
@@ -148,7 +144,20 @@ function avoid(sensoryInput, actions) {
 function backup(sensoryInput, actions) {
     if (this.hasGoal) return actions;
 
-    if (sensoryInput.length == 0) return actions;
+    if (sensoryInput.length == 0 && this.backupCounter > 0) return actions;
+
+    if(this.backupCounter > 0) {
+        this.backupCounter--;
+
+        var newAction = {
+            actionType: ACTION_SPEED,
+            data: -2 *this.genome.maximumSpeed
+        };
+
+        actions = subsume(newAction, actions);
+
+        return actions;
+    }
 
     //find minimum distance
     var closestInput = null;
@@ -175,14 +184,9 @@ function backup(sensoryInput, actions) {
     //is this an obstacle?
     var distance = closestInput.distance;
 
-    if (distance < this.genome.emergencyStop) {
-        var newAction = {
-            actionType: ACTION_SPEED,
-            data: -2 *this.genome.maximumSpeed
-        };
-
-        actions = subsume(newAction, actions);
-    }
+    /*if (distance < this.genome.emergencyStop) {
+        this.backupCounter = 5;
+    }*/
 
     return actions;
 }
@@ -230,11 +234,25 @@ function approachGoal(sensoryInput, actions) {
 }
 
 function approachBeacon(sensoryInput, actions) {
-    var beaconCheck = Math.random() < this.genome.beaconResponseProb;
+    /*var beaconCheck = Math.random() < this.genome.beaconResponseProb;
 
     if (!beaconCheck) return actions;
 
-    if (this.hasGoal) return actions;
+    if (this.hasGoal) return actions;*/
+
+
+    //update beacon length
+    var midPoint = this.beaconMax / 2;
+    if(this.beaconCounter > midPoint) {
+        this.beaconMax++;
+    } else {
+        this.beaconMax--;
+    }
+
+    //reset beacon timer
+    this.beaconCounter = this.beaconMax;
+
+
 
     var signals = this.radio.getSignals(this.x, this.y, this.genome.radioThreshold);
 
@@ -253,7 +271,7 @@ function approachBeacon(sensoryInput, actions) {
 
     var theta1 = this.theta;
 
-    newDirection += 2*theta1;
+    newDirection += this.genome.resistance*theta1;
     newDirection /= beaconSignals.length;
 
     var angleDiff = Math.atan2(Math.sin(theta1-newDirection), Math.cos(theta1-newDirection));
@@ -303,9 +321,18 @@ function detectGoal(sensoryInput, actions) {
 }
 
 function beaconSend(sensoryInput, actions) {
-    var beaconCheck = Math.random() < this.genome.beaconProb;
+    var beaconCheck = false;
+
+    this.beaconCounter--;
+
+    if (this.beaconCounter <= 0) beaconCheck = true;
 
     if (!beaconCheck) return actions;
+
+    this.beaconCounter = this.beaconMax;
+
+    //only do a random change when its signaled
+    actions = wander.call(this, sensoryInput, actions);
 
     var signalAction = {
         actionType: ACTION_SIGNAL,
@@ -366,22 +393,12 @@ function processSignalsNoGoal(sensoryInput, actions) {
         if (current.id == this.id) continue; //filter out self signals
         if (current.data.signalType !== SIGNAL_GOAL) continue;
 
-        //find the corresponding goal
-        var result = _.find(sensoryInput, function(element) {
-            if(!element.isGoal) return false;
-
-            if (element.id == current.data.id) return true;
-        });
-
-        if (_.isUndefined(result)) continue;
-
-        if (result.distance < current.data.distance ) {
-
-            if(_.isNull(winningSignal)) winningSignal = current;
-
-            if (current.data.distance < winningSignal.data.distance) winningSignal = current;
-
+        if (_.isNull(winningSignal)) {
+            winningSignal = current;
+            continue;
         }
+
+        if (current.distance < winningSignal.distance) winningSignal = current;
     }
 
     if (!_.isNull(winningSignal)) {
@@ -456,7 +473,7 @@ function executeActions(actions) {
                 self.radio.addSignal(self.id, self.x, self.y, element.data);
                 break;
             case ACTION_STOP:
-                self.speed = 0;
+                //self.speed = 0;
                 break;
         }
     });

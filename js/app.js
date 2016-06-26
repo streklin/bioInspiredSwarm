@@ -8,11 +8,11 @@ var app = function() {
     this.graphicsEngine = new graphicsEngine('boidUI', YBOUND, XBOUND);
     this.goals = [];
     this.drones = [];
-    this.obstacles = [];
     this.goalType = null;
     this.physics = new physics(XBOUND,YBOUND);
     this.started = false;
     this.signalManager = new signalManager();
+    this.evolution = new evolutionSystem(0.01, 0);
 
     PubSub.subscribe(CANVAS_MOUSE_DOWN, function(msg, data) {
         self.addGoal(data.x, data.y);
@@ -23,6 +23,74 @@ var app = function() {
 app.prototype.start = function() {
     setupUIEvents.call(this);
     buildMap.call(this);
+};
+
+var appSelf = null;
+
+app.prototype.evolveSystem = function(initialPopulation) {
+
+    appSelf = this;
+
+    var population = [];
+
+    //generate initial population
+    for(var i = 0; i < initialPopulation; i++) {
+
+        var genotype = [];
+
+        for(var j = 0; j < 9; j++) {
+            genotype.push(Math.random());
+        }
+
+        population.push(genotype);
+    }
+
+    this.evolution.evolve(population, 20, this.simulateHeadless);
+
+};
+
+app.prototype.simulateHeadless = function(genome) {
+
+    appSelf.drones = [];
+
+    appSelf.goals = [];
+
+    buildMap.call(appSelf);
+
+    for(var i = 0; i < 25; i++) {
+        createDroneFromGenome.call(appSelf, genome);
+    }
+
+    var iterations = 0;
+    var complete = false;
+
+    var self = appSelf;
+
+    console.log('SIMULATING PHENOTYPE');
+
+    while(iterations < 10000 && !complete) {
+
+        _.each(self.drones, function(element) {
+            var sensorReadings = checkSensorReadings.call(self,element);
+            element.update(sensorReadings);
+        });
+
+        self.physics.update(self.drones);
+
+        var goalsLeft = _.find(self.goals, function(element) { return element.goalType != GOAL_OBSTACLE});
+
+        if(_.isUndefined(goalsLeft) || self.iterations === 10000) {
+            complete = true;
+        }
+
+        iterations++;
+    }
+
+    var fitness = 10000 - iterations;
+    console.log(fitness);
+
+    return fitness;
+
 };
 
 app.prototype.simulate = function(droneCount) {
@@ -39,6 +107,11 @@ app.prototype.simulate = function(droneCount) {
 
     this.intervalToken = setInterval(function () {
         self.iterations++;
+
+        //reset any tag counts for co-operative goals
+        _.each(self.goals, function(element) {
+            element.tagCount = 0;
+        });
 
         _.each(self.drones, function(element) {
             var sensorReadings = checkSensorReadings.call(self,element);
@@ -96,6 +169,14 @@ function setupUIEvents() {
         self.goalType = null;
         setGoalType.call(self, '');
         render.call(self);
+    });
+
+    $('#start-evolution').click(function() {
+        self.evolveSystem(100);
+    });
+
+    $('#build-map').click(function() {
+        buildMap.call(self);
     });
 
     $('#startLink').click(function() {
@@ -170,12 +251,12 @@ function render() {
 
 function buildMap() {
     this.goalType = GOAL_OBSTACLE;
-    for(var i = 0; i < 500; i+=10) {
+    /*for(var i = 0; i < 500; i+=10) {
         this.addGoal(i, 400);
     }
     for(i=0;i < 300; i+= 10) {
         this.addGoal(350, i);
-    }
+    }*/
 
     for(var i=0;i<XBOUND;i+=10) {
         this.addGoal(i,0);
@@ -193,7 +274,7 @@ function buildMap() {
         this.addGoal(XBOUND-20,i);
     }
 
-    this.goalType = GOAL_COLLECT;
+    this.goalType = GOAL_TAG;
     this.addGoal(670, 102);
     this.addGoal(681, 176);
     this.addGoal(689, 501);
@@ -268,42 +349,82 @@ function getDroneGeometry(geometry) {
     return geometry;
 }
 
+function createDroneFromGenome(genome) {
+    var genomeTemplate = {
+        speedDelta: genome[0],
+        orientationDelta: genome[1],
+        wanderSpeedProb: genome[2],
+        wanderOrientationProb: genome[3],
+        radioThreshold: RADIO_THRESHOLD,
+        thresholdDistance: THRESHOLD_DISTANCE * genome[4] + 20,
+        emergencyStop: THRESHOLD_EMERGENCY_STOP * genome[5],
+        thresholdAngle:  Math.PI / 4,
+        maximumSpeed: 1,
+        backwardsWait: 0,
+        beaconProb: genome[6],
+        beaconResponseProb: genome[7],
+        resistance: 2  +  genome[8]
+    };
+
+    var x = Math.floor(Math.random() * 200) + 50;
+    var y = Math.floor(Math.random() * 200) + 50;
+    var orientation = 0;
+    var speed = 1;
+
+    __id++;
+
+    var newDrone = new drone(x,y,orientation,speed, genomeTemplate, this.signalManager);
+    newDrone.id = __id;
+
+    this.drones.push(newDrone);
+}
+
 function createDrones(droneCount) {
 
-    var leaderCreated = false;
+    //var genome = [0.46353429909156185, 0.11232222629611122, 0.37481773005433583, 0.8898732240608891, 0.528433308611965, 0.028348491769947914, 0.6526274135796364, 0.02776008969223165, 0.8651637335496349];
+
+    //var genome = [0.9599993667602316, 0.13934628329231247, 0.5281511074482172, 0.003763557355500602, 0.863813637146672, 0.8409819437411101, 0.04538286373820011, 0.2449656147782746, 0.17535554241050244];
+    var genome = [0.026568901574509196, 0.11251543364504579, 0.07547711489883158, 0.7506180684026786, 0.2756463497375523, 0.248661027125876, 0.2777104447452958, 0.05196610903900867, 0.5801013077934212];
+
 
     for(var i = 0; i < droneCount; i++) {
-        var x = Math.floor(Math.random() * 200) + 50;
-        var y = Math.floor(Math.random() * 200) + 50;
-        var orientation = 0;
-        var speed = 1;
-
-        __id++;
-
-        var followProb = Math.random();
-        var beaconProb = Math.random();
-
-        var genomeTemplate = {
-            speedDelta: 0.5,
-            orientationDelta: 0.3,
-            wanderSpeedProb: 0,
-            wanderOrientationProb: 0.5,
-            radioThreshold: RADIO_THRESHOLD,
-            thresholdDistance: THRESHOLD_DISTANCE * Math.random() + 20,
-            emergencyStop: THRESHOLD_EMERGENCY_STOP * Math.random(),
-            thresholdAngle:  Math.PI / 4,
-            maximumSpeed: 1,
-            backwardsWait: 0,
-            beaconProb: beaconProb,
-            beaconResponseProb: followProb
-        };
-
-        var newDrone = new drone(x,y,orientation,speed, genomeTemplate, this.signalManager);
-        newDrone.id = __id;
-
-        this.drones.push(newDrone);
+        //createDroneFromGenome.call(this, genome);
+        createDroneRandomized.call(this);
     }
 
+}
+
+function createDroneRandomized() {
+    var x = Math.floor(Math.random() * 200) + 50;
+    var y = Math.floor(Math.random() * 200) + 50;
+    var orientation = 0;
+    var speed = 1;
+
+    __id++;
+
+    var followProb = Math.random();
+    var beaconProb = Math.random();
+
+    var genomeTemplate = {
+        speedDelta: 0.5,
+        orientationDelta: 0.3,
+        wanderSpeedProb: 0,
+        wanderOrientationProb: 0.5,
+        radioThreshold: RADIO_THRESHOLD,
+        thresholdDistance: 30,
+        emergencyStop: 1,
+        thresholdAngle:  Math.PI / 4,
+        maximumSpeed: 2,
+        backwardsWait: 0,
+        beaconProb: beaconProb,
+        beaconResponseProb: 0,
+        resistance: 0
+    };
+
+    var newDrone = new drone(x,y,orientation,speed, genomeTemplate, this.signalManager);
+    newDrone.id = __id;
+
+    this.drones.push(newDrone);
 }
 
 function checkSensorReadings(current) {
@@ -343,8 +464,15 @@ function goalTracking(current) {
             sense.isGoal = false;
             sense.distance -= OBSTACLE_RADIUS;
             result.push(sense);
-        } else if (sense.distance < THRESHOLD_EMERGENCY_STOP) {
+        } else if (sense.distance < THRESHOLD_EMERGENCY_STOP && this.goals[i].goalType == GOAL_COLLECT) {
             this.goals[i].id = null;
+        } else if (sense.distance < THRESHOLD_EMERGENCY_STOP && this.goals[i].goalType == GOAL_TAG) {
+
+            if (_.isUndefined(this.goals[i].tagCount)) this.goals[i].tagCount = 0;
+            this.goals[i].tagCount++;
+
+            if (this.goals[i].tagCount == 3) this.goals[i].id = null;
+
         } else if (sense.distance < SENSOR_RANGE) {
             result.push(sense);
         }
