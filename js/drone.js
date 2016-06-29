@@ -32,7 +32,7 @@ var drone = function(x,y, theta, speed, genome, radio) {
     this.genome = genome;
     this.radio = radio;
     this.backupCounter = 0;
-    this.beaconMax = Math.round(genome.beaconProb * 50);
+    this.beaconMax = Math.round(genome.beaconProb * 2) + 1;
     this.beaconCounter = this.beaconMax;
 
     this.hasGoal = false;
@@ -46,7 +46,7 @@ drone.prototype.update = function(sensoryInput) {
     actions = approachBeacon.call(this, sensoryInput, actions);
     actions = detectGoal.call(this, sensoryInput, actions);
     actions = beaconSend.call(this, sensoryInput, actions);
-    //actions = signalSend.call(this, sensoryInput, actions);
+    actions = signalSend.call(this, sensoryInput, actions);
     //actions = processSignalsNoGoal.call(this, sensoryInput, actions);
     actions = avoid.call(this, sensoryInput, actions);
     actions = approachGoal.call(this, sensoryInput, actions);
@@ -234,13 +234,6 @@ function approachGoal(sensoryInput, actions) {
 }
 
 function approachBeacon(sensoryInput, actions) {
-    /*var beaconCheck = Math.random() < this.genome.beaconResponseProb;
-
-    if (!beaconCheck) return actions;
-
-    if (this.hasGoal) return actions;*/
-
-
     //update beacon length
     var midPoint = this.beaconMax / 2;
     if(this.beaconCounter > midPoint) {
@@ -251,7 +244,6 @@ function approachBeacon(sensoryInput, actions) {
 
     //reset beacon timer
     this.beaconCounter = this.beaconMax;
-
 
 
     var signals = this.radio.getSignals(this.x, this.y, this.genome.radioThreshold);
@@ -328,7 +320,7 @@ function beaconSend(sensoryInput, actions) {
     if (this.beaconCounter <= 0) beaconCheck = true;
 
     if (!beaconCheck) return actions;
-
+    this.beaconMax++;
     this.beaconCounter = this.beaconMax;
 
     //only do a random change when its signaled
@@ -355,6 +347,9 @@ function signalSend(sensoryInput, actions) {
 
     var self = this;
 
+    if (this.beaconMax > 2) this.beaconMax--;
+    this.beaconCounter = this.beaconMax;
+
     var result = _.find(sensoryInput, function(element) {
         if (!element.isGoal) return false;
 
@@ -366,9 +361,9 @@ function signalSend(sensoryInput, actions) {
     var signalAction = {
         actionType: ACTION_SIGNAL,
         data: {
-            id: result.id,
-            distance: result.distance,
-            signalType: SIGNAL_GOAL
+            id: this.id,
+            direction: this.theta,
+            signalType: SIGNAL_BECACON
         }
     };
 
