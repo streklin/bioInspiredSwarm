@@ -256,8 +256,8 @@ function buildMap() {
     }
     for(i=0;i < 300; i+= 10) {
         this.addGoal(350, i);
-    }
-    */
+    }*/
+
 
     for(var i=0;i<XBOUND;i+=10) {
         this.addGoal(i,0);

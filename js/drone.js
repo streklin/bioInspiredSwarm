@@ -28,59 +28,135 @@ var drone = function(x,y, theta, speed, genome, radio) {
     this.y = y;
     this.theta = theta;
     this.speed = speed;
-    this.grapple = false;
     this.genome = genome;
     this.radio = radio;
-    this.backupCounter = 0;
-    this.beaconMax = Math.round(genome.beaconProb * 2) + 1;
-    this.beaconCounter = this.beaconMax;
+    this.heartBeatInterval = 50;
+    this.heartBeatCounter = 50;
+    this.signalSent = false;
 
-    this.hasGoal = false;
-    this.goal = null;
 };
 
 drone.prototype.update = function(sensoryInput) {
-    var actions = [];
 
-    //actions = wander.call(this, sensoryInput, actions);
-    actions = approachBeacon.call(this, sensoryInput, actions);
-    actions = detectGoal.call(this, sensoryInput, actions);
-    actions = beaconSend.call(this, sensoryInput, actions);
-    actions = signalSend.call(this, sensoryInput, actions);
-    //actions = processSignalsNoGoal.call(this, sensoryInput, actions);
+    updateTicker.call(this);
+
+    var actions = [];
+    actions = wander.call(this, sensoryInput, actions);
+    actions = processSignals.call(this, sensoryInput, actions);
+    actions = signalGoal.call(this,sensoryInput, actions);
     actions = avoid.call(this, sensoryInput, actions);
-    actions = approachGoal.call(this, sensoryInput, actions);
-    //actions = backup.call(this, sensoryInput, actions);
 
     executeActions.call(this, actions);
 };
 
+//the heart beat
+function updateTicker() {
+
+    if (!this.signalSent && this.heartBeatInterval < 50)
+        this.heartBeatInterval++;
+    else if(this.signalSent)
+        increaseHeartBeat.call(this);
+
+    this.heartBeatCounter--;
+    if (this.heartBeatCounter < 0) this.heartBeatCounter = this.heartBeatInterval;
+
+}
+
+//quicken the heartbeat
+function increaseHeartBeat() {
+    //force a heart beat
+    this.heartBeatCounter = 0;
+
+    //decrease the size of beaconMax, to a minumum of 1
+    if (this.heartBeatInterval > 1)
+        this.heartBeatInterval--;
+}
 
 function wander(sensoryInput, actions) {
+    //keep doing what we are doing until the next heartbeat
+    if (this.heartBeatCounter !== 0) return actions;
 
-    var actions = [];
-
-    //change direction?
-    if (true) {
-        var angleDelta = Math.random() * this.genome.orientationDelta * 2;
-        angleDelta -= this.genome.orientationDelta;
-        var action = {
-            actionType: ACTION_ROTATE,
-            data: angleDelta
-        };
-        actions = subsume(action, actions);
+    //choose a random direction change
+    var delta = this.genome.orientationDelta;
+    var flip = Math.random() > Math.random();
+    if (flip) {
+        delta *= -1;
     }
 
-    //change speed?
-    if(this.backupCounter == 0) {
-        var action ={
-            actionType: ACTION_SPEED,
-            data: this.genome.maximumSpeed
-        };
+    var action = {
+        actionType: ACTION_ROTATE ,
+        data: delta
+    };
 
-        actions = subsume(action, actions);
-    }
+    actions = subsume(action, actions);
 
+    return actions;
+}
+
+function signalGoal(sensoryInput, actions) {
+
+    this.signalSent = false;
+
+    //scan the sensory input
+    var goals = _.filter(sensoryInput, function(element) {
+        return element.isGoal;
+    });
+
+    var sortedGoals = _.sortBy(goals, "distance");
+
+    if (sortedGoals.length === 0) return actions;
+
+    var currentGoal = sortedGoals[0];
+    var signalAction = createSignalAction.call(this, {direction: currentGoal.angle});
+
+    actions = subsume(signalAction, actions);
+
+    //  change orientation var angleDiff = Math.atan2(Math.sin(theta1-theta2), Math.cos(theta1-theta2));
+    var theta1 = this.theta;
+    var theta2 = currentGoal.angle;
+    var angleDiff = Math.atan2(Math.sin(theta1-theta2), Math.cos(theta1-theta2));
+
+    var delta = this.genome.orientationDelta;
+    if(angleDiff > 0) delta *= -1;
+
+    var action = {
+        actionType: ACTION_ROTATE ,
+        data: delta
+    };
+
+    actions = subsume(action, actions);
+
+    return actions;
+}
+
+function processSignals(sensoryInput, actions) {
+    var signals = this.radio.getSignals(this.x, this.y, this.genome.radioThreshold);
+
+    if (signals.length === 0) return actions;
+
+    if (!this.signalSent) increaseHeartBeat();
+
+    var self = this;
+
+    var signalsSorted = _.sortBy(signals, function(element) {
+        return distanceMetric(self, element);
+    });
+
+    var closestSignal = signalsSorted[0];
+
+    var theta1 = this.theta;
+    var theta2 = closestSignal.data.direction;
+    var angleDiff = Math.atan2(Math.sin(theta1-theta2), Math.cos(theta1-theta2));
+
+    var delta = this.genome.orientationDelta;
+    if(angleDiff > 0) delta *= -1;
+
+    var action = {
+        actionType: ACTION_ROTATE ,
+        data: delta
+    };
+
+    actions = subsume(action, actions);
 
     return actions;
 }
@@ -89,355 +165,52 @@ function avoid(sensoryInput, actions) {
 
     if (sensoryInput.length == 0) return actions;
 
-    //find minimum distance
-    var closestInput = null;
+    var obstacles = _.filter(sensoryInput, function(element) {
+        return !element.isGoal || element.goalType === GOAL_OBSTACLE
+    });
 
-    for(var i = 0; i < sensoryInput.length; i++) {
-        if (sensoryInput[i].isGoal && sensoryInput[i].goalType != GOAL_OBSTACLE) continue; //ignore goals
+    if (obstacles.length === 0) return actions;
 
-        var theta1 = this.theta;
-        var theta2 = sensoryInput[i].angle;
+    var sortedObstacles = _.sortBy(obstacles, function(element) {
+       return element.distance;
+    });
 
+    var closestInput = sortedObstacles[0];
 
-        var angleDiff = Math.atan2(Math.sin(theta1-theta2), Math.cos(theta1-theta2));
-
-        if (angleDiff > this.genome.thresholdAngle) continue;
-
-        if (_.isNull(closestInput)) {
-            closestInput = sensoryInput[i];
-            continue;
-        }
-
-        if (sensoryInput[i].distance < closestInput.distance) closestInput = sensoryInput[i];
-    }
-
-    //is this an obstacle?
     var distance = closestInput.distance;
 
     var theta1 = this.theta;
     var theta2 = closestInput.angle;
 
-
     var angleDiff = Math.atan2(Math.sin(theta1-theta2), Math.cos(theta1-theta2));
 
     if (Math.abs(angleDiff) > this.genome.thresholdAngle) return actions;
 
-    if (distance < this.genome.thresholdDistance && distance > this.genome.emergencyStop) {
-        var da = this.genome.orientationDelta * 2;
+    if (distance < this.genome.thresholdDistance) {
 
-        if (this.speed < 0) da *= -1;
-
-        /*if (angleDiff < 0) da *=-1;*/
+        var delta = this.genome.orientationDelta;
+        //if(angleDiff > 0) delta *= -1;
 
         var newAction = {
-            actionType: ACTION_ROTATE,
-            data: da
+            actionType: ACTION_ROTATE ,
+            data: delta
         };
 
         actions = subsume(newAction, actions);
-
     }
 
     return actions;
 }
 
-function backup(sensoryInput, actions) {
-    if (this.hasGoal) return actions;
-
-    if (sensoryInput.length == 0 && this.backupCounter > 0) return actions;
-
-    if(this.backupCounter > 0) {
-        this.backupCounter--;
-
-        var newAction = {
-            actionType: ACTION_SPEED,
-            data: -2 *this.genome.maximumSpeed
-        };
-
-        actions = subsume(newAction, actions);
-
-        return actions;
-    }
-
-    //find minimum distance
-    var closestInput = null;
-
-    for(var i = 0; i < sensoryInput.length; i++) {
-        if (sensoryInput[i].isGoal && sensoryInput[i].goalType != GOAL_OBSTACLE) continue; //ignore goals
-
-        var theta1 = this.theta;
-        var theta2 = sensoryInput[i].angle;
-
-
-        var angleDiff = Math.atan2(Math.sin(theta1-theta2), Math.cos(theta1-theta2));
-
-        if (angleDiff > this.genome.thresholdAngle) continue;
-
-        if (_.isNull(closestInput)) {
-            closestInput = sensoryInput[i];
-            continue;
-        }
-
-        if (sensoryInput[i].distance < closestInput.distance) closestInput = sensoryInput[i];
-    }
-
-    //is this an obstacle?
-    var distance = closestInput.distance;
-
-    /*if (distance < this.genome.emergencyStop) {
-        this.backupCounter = 5;
-    }*/
-
-    return actions;
-}
-
-function approachGoal(sensoryInput, actions) {
-
-    if(!this.hasGoal) return actions;
-
-    var self = this;
-
-    //check that the goal still exists
-    var result = _.find(sensoryInput, function(element) {
-        if (!element.isGoal) return false;
-        if (element.goalType == GOAL_OBSTACLE) return false; //don't approach obstacles :P
-
-        return element.id == self.goal.id;
-    });
-
-    if (_.isUndefined(result)) {
-        this.hasGoal = false;
-        this.goal = null;
-        return actions;
-    }
-
-    var theta1 = this.theta;
-    var theta2 = result.angle;
-
-
-    var angleDiff = Math.atan2(Math.sin(theta1-theta2), Math.cos(theta1-theta2));
-
-    var da = -0.2;
-
-    if (this.speed < 0) da *= -1;
-
-    if (angleDiff < 0) da *=-1;
-
-    var rotateAction = {
-        actionType: ACTION_ROTATE,
-        data: da
-    };
-
-    actions = subsume(rotateAction, actions);
-
-    return actions;
-}
-
-function approachBeacon(sensoryInput, actions) {
-    //update beacon length
-    var midPoint = this.beaconMax / 2;
-    if(this.beaconCounter > midPoint) {
-        this.beaconMax++;
-    } else {
-        this.beaconMax--;
-    }
-
-    //reset beacon timer
-    this.beaconCounter = this.beaconMax;
-
-
-    var signals = this.radio.getSignals(this.x, this.y, this.genome.radioThreshold);
-
-    if (signals.length == 0) return actions;
-
-    //filter to get only the BEACON signals
-    var beaconSignals = _.filter(signals, function(element) { return element.data.signalType === SIGNAL_BECACON; });
-
-    if (beaconSignals.length === 0) return actions;
-
-    var newDirection = 0;
-
-    _.each(beaconSignals, function(element) {
-        newDirection += element.data.direction;
-    });
-
-    var theta1 = this.theta;
-
-    newDirection += this.genome.resistance*theta1;
-    newDirection /= beaconSignals.length;
-
-    var angleDiff = Math.atan2(Math.sin(theta1-newDirection), Math.cos(theta1-newDirection));
-
-    var da = this.genome.orientationDelta;
-
-    if (this.speed < 0) da *= -1;
-
-    if (angleDiff < 0) da *=-1;
-
-    var rotateAction = {
-        actionType: ACTION_ROTATE,
-        data: da
-    };
-
-    actions = subsume(rotateAction, actions);
-
-    return actions;
-}
-
-function detectGoal(sensoryInput, actions) {
-
-    if (this.hasGoal) return actions;
-
-    var goals = _.filter(sensoryInput, function(element) {return element.isGoal; });
-
-    if (goals.length == 0) return actions;
-
-    var winningGoal = null;
-
-    for(var i = 0; i < goals.length; i++) {
-        if (_.isNull(winningGoal)) {
-            winningGoal = goals[i];
-            continue;
-        }
-
-        if (goals[i].distance < winningGoal.distance) {
-            winningGoal = goals[i];
-        }
-    }
-
-    this.hasGoal = true;
-    this.goal = winningGoal;
-
-    return actions;
-
-}
-
-function beaconSend(sensoryInput, actions) {
-    var beaconCheck = false;
-
-    this.beaconCounter--;
-
-    if (this.beaconCounter <= 0) beaconCheck = true;
-
-    if (!beaconCheck) return actions;
-    this.beaconMax++;
-    this.beaconCounter = this.beaconMax;
-
-    //only do a random change when its signaled
-    actions = wander.call(this, sensoryInput, actions);
+function createSignalAction(data) {
+    this.signalSent = true;
 
     var signalAction = {
         actionType: ACTION_SIGNAL,
-        data: {
-            id: this.id,
-            direction: this.theta,
-            signalType: SIGNAL_BECACON
-        }
+        data: data
     };
 
-    actions = subsume(signalAction, actions);
-
-    return actions;
-}
-
-function signalSend(sensoryInput, actions) {
-
-    //do drone have goal?
-    if (!this.hasGoal) return actions;
-
-    var self = this;
-
-    if (this.beaconMax > 2) this.beaconMax--;
-    this.beaconCounter = this.beaconMax;
-
-    var result = _.find(sensoryInput, function(element) {
-        if (!element.isGoal) return false;
-
-        return element.id == self.goal.id;
-    });
-
-    if (_.isUndefined(result)) return actions;
-
-    var signalAction = {
-        actionType: ACTION_SIGNAL,
-        data: {
-            id: this.id,
-            direction: this.theta,
-            signalType: SIGNAL_BECACON
-        }
-    };
-
-    actions = subsume(signalAction, actions);
-    return actions;
-
-};
-
-function processSignalsNoGoal(sensoryInput, actions) {
-
-    if (this.hasGoal) return actions;
-
-    var signals = this.radio.getSignals(this.x, this.y, this.genome.radioThreshold);
-
-    if (signals.length == 0) return actions;
-
-    //check signals against sensory input
-    var winningSignal = null;
-    for(var i = 0; i < signals.length; i++) {
-        var current = signals[i];
-
-        if (current.id == this.id) continue; //filter out self signals
-        if (current.data.signalType !== SIGNAL_GOAL) continue;
-
-        if (_.isNull(winningSignal)) {
-            winningSignal = current;
-            continue;
-        }
-
-        if (current.distance < winningSignal.distance) winningSignal = current;
-    }
-
-    if (!_.isNull(winningSignal)) {
-        this.hasGoal = true;
-        this.goal = winningSignal;
-    }
-
-    return actions;
-}
-
-function processSignalsWithGoal(sensoryInput, actions) {
-    if (!this.hasGoal) return actions;
-
-    var self = this;
-
-    //check that the goal is active
-    var result = _.find(sensoryInput, function(element) {
-        if (!element.isGoal) return false;
-        return self.goal.id == element.id;
-    });
-
-    if (_.isUndefined(result)) return actions; //goal is no longer active
-
-    var signals = this.radio.getSignals(this.x, this.y, this.genome.radioThreshold);
-
-    if (signals.length == 0) return actions;
-
-    //make sure we are still the best individual for the job.
-    for(var i = 0; i < signals.length; i++) {
-        if (signals[i].id == this.id) continue;
-        if (signals[i].data.signalType !== SIGNAL_GOAL) continue;
-
-        var current = signals[i];
-
-        if (current.data.id != result.id) continue; //don't care about other goals
-
-        if (current.data.distance < result.distance) {
-            this.goal = null;
-            this.hasGoal = false;
-            break;
-        }
-    }
-
-    return actions;
+    return signalAction;
 
 }
 
@@ -454,7 +227,6 @@ function executeActions(actions) {
     var self = this;
 
     this.radio.clearDroneSignals(this.id);
-
 
     _.each(actions, function(element) {
         switch(element.actionType) {

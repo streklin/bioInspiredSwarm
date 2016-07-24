@@ -25,8 +25,8 @@ var ACTION_TAG = 'action.tag';
 var ACTION_IMAGE = 'action.image';
 var ACTION_SIGNAL = 'action.signal';
 
-var MAXIMUM_SPEED = 2;
-var MIN_SPEED = 0;
+var MAXIMUM_SPEED = 1;
+var MIN_SPEED = 1;
 
 var XBOUND = 800;
 var YBOUND = 600;
@@ -34,7 +34,7 @@ var YBOUND = 600;
 var SENSOR_RANGE = 100;
 
 var BACKWARDS_WAIT = 5;
-var THRESHOLD_DISTANCE = 20;
+var THRESHOLD_DISTANCE = 40;
 var THRESHOLD_EMERGENCY_STOP = 10;
 var THRESHOLD_ANGLE = Math.PI;
 var RADIO_THRESHOLD = 400;
